@@ -24,7 +24,7 @@ def getFilesAsString(urlFind,userFtp,passFtp,commandFind):
       print "pxssh failed on login."
       print str(e)
 
-def sendFile(url,line,lineR,successLog,errorLog,msg,wait):
+def sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,rep,new,unknow):
   try:
     hotelTicker = lineR[0]
     entity = lineR[1]
@@ -41,17 +41,64 @@ def sendFile(url,line,lineR,successLog,errorLog,msg,wait):
     successLog.write(str(params))
     successLog.write(msgBonito)
     print(msgBonito)
+    if "The database could not be accessed" in msgBonito or "DataBase '"+hotelTicker+"' Not found." in msgBonito:
+      print "hotelTicker "+ hotelTicker + " appended to hotelTickerFail list "
+      hotelTickerFail.append(hotelTicker)
+    elif "hotelMedia ya existe" in msgBonito:
+      rep+=1
+    elif "HotelMedia{" in msgBonito:
+      new+=1
+    else:
+      unknow+=1
     conn.close()
   except ValueError:
     print msg
     if (wait):
       raw_input('Error happens, enter any key to continue...')
     errorLog.write(msg)
+  return [rep,new,unknow]
 
 def error():
   print 'Arguments required. \nPlease run python meterArchivos.py -h for more information.'
   #print 'test.py -i <inputfile> -o <outputfile>'
   sys.exit(2)
+
+def execute(url,urlFind,commandFind,userFtp,passFtp,wait):
+#def main(argv):
+  print "ssh "+userFtp+"@"+urlFind
+  content = getFilesAsString(urlFind,userFtp,passFtp,commandFind)
+  errorLog = open('logs/error.log','w')
+  successLog = open('logs/success.log','w')
+  i = 0
+  totalString = content.splitlines(True)[1:]
+  hashMap = {}
+  hotelTickerFail = []
+  rep=0
+  new=0
+  unknow=0
+  for line in totalString:
+    lineRQ =map(lambda x: x.strip(),line.split("/"))
+    msg = '\n'+str(line.strip())+" len: "+str(len(lineRQ))
+    if len(lineRQ) >= 8:
+      lineR = lineRQ[-4:]
+      hotelTicker = lineR[0]
+      if hashMap.has_key(hotelTicker):
+        hashMap[hotelTicker] = hashMap[hotelTicker] + 1
+      else:
+        hashMap[hotelTicker] = 1
+      i+=1
+      if not hotelTicker in hotelTickerFail:
+        rep,new,unknow = sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,rep,new,unknow)
+    else:
+      print msg
+      errorLog.write(msg)
+  print "i : " , i, "total: " , len(totalString)
+  print "rep " , rep , " new ", new , " unknow " , unknow
+  print "hotelTickerFail " , hotelTickerFail
+  print hashMap
+  errorLog.close()
+  successLog.close()
+
 
 def main(argv):
   serverHash = {"luke": [
@@ -108,32 +155,9 @@ def main(argv):
   commandFind = 'find '+server[2]+' -name \'*.png\' -or -name \'*.jpg\' -or -name \'*.gif\''
   userFtp = server[3]
   passFtp = server[4]
-  print "ssh "+userFtp+"@"+urlFind
-  content = getFilesAsString(urlFind,userFtp,passFtp,commandFind)
-  errorLog = open('logs/error.log','w')
-  successLog = open('logs/success.log','w')
-  i = 0
-  totalString = content.splitlines(True)[1:]
-  hashMap = {}
-  for line in totalString:
-    lineRQ =map(lambda x: x.strip(),line.split("/"))
-    msg = '\n'+str(line.strip())+" len: "+str(len(lineRQ))
-    if len(lineRQ) >= 8:
-      lineR = lineRQ[-4:]
-      hotelTicker = lineR[0]
-      if hashMap.has_key(hotelTicker):
-        hashMap[hotelTicker] = hashMap[hotelTicker] + 1
-      else:
-        hashMap[hotelTicker] = 1
-      i+=1
-      sendFile(url,line,lineR,successLog,errorLog,msg,wait)
-    else:
-      print msg
-      errorLog.write(msg)
-  print "i : " , i, "total: " , len(totalString)
-  print hashMap
-  errorLog.close()
-  successLog.close()
+  execute(url,urlFind,commandFind,userFtp,passFtp,wait)
+
+
 
 if __name__ == "__main__":
   main(sys.argv[1:])
