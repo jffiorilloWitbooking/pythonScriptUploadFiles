@@ -7,101 +7,10 @@ import sys
 import getopt
 import glob,os 
 from lxml import etree, html
+import curses
 
-def getFilesAsString(urlFind,userFtp,passFtp,commandFind):
-  try:                                                            
-    s = pxssh.pxssh()
-    s.login(urlFind,userFtp,passFtp)
-    s.sendline(commandFind)
-    s.prompt()
-    content= s.before
-    fil = open('entry.txt','w')
-    fil.write(content)
-    fil.close()
-    s.logout()
-    return content
-  except pxssh.ExceptionPxssh, e:
-      print "pxssh failed on login."
-      print str(e)
-
-def sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,rep,new,unknow):
-  try:
-    hotelTicker = lineR[0]
-    entity = lineR[1]
-    idEntity = int(lineR[2])
-    fileName = lineR[3]
-    #if hotelTicker == 'hoteldemo.com.v6':
-    print lineR
-    params = urllib.urlencode({'hotelTicker':hotelTicker,'entity':entity,'idEntity':idEntity,'fileName':fileName})
-    print params
-    conn= urllib.urlopen(url+":8080/WitBookerAPI-war/webresources/internal/withotel/insert", params) 
-    htmlGet = html.fromstring(conn.read())
-    msgBonito=etree.tostring(htmlGet,pretty_print=True)
-    successLog.write(str(lineR))
-    successLog.write(str(params))
-    successLog.write(msgBonito)
-    print(msgBonito)
-    if "The database could not be accessed" in msgBonito or "DataBase '"+hotelTicker+"' Not found." in msgBonito:
-      print "hotelTicker "+ hotelTicker + " appended to hotelTickerFail list "
-      hotelTickerFail.append(hotelTicker)
-    elif "hotelMedia ya existe" in msgBonito:
-      rep+=1
-    elif "HotelMedia{" in msgBonito:
-      new+=1
-    else:
-      unknow+=1
-    conn.close()
-  except ValueError:
-    print msg
-    if (wait):
-      raw_input('Error happens, enter any key to continue...')
-    errorLog.write(msg)
-  return [rep,new,unknow]
-
-def error():
-  print 'Arguments required. \nPlease run python meterArchivos.py -h for more information.'
-  #print 'test.py -i <inputfile> -o <outputfile>'
-  sys.exit(2)
-
-def execute(url,urlFind,commandFind,userFtp,passFtp,wait):
-#def main(argv):
-  print "ssh "+userFtp+"@"+urlFind
-  content = getFilesAsString(urlFind,userFtp,passFtp,commandFind)
-  errorLog = open('logs/error.log','w')
-  successLog = open('logs/success.log','w')
-  i = 0
-  totalString = content.splitlines(True)[1:]
-  hashMap = {}
-  hotelTickerFail = []
-  rep=0
-  new=0
-  unknow=0
-  for line in totalString:
-    lineRQ =map(lambda x: x.strip(),line.split("/"))
-    msg = '\n'+str(line.strip())+" len: "+str(len(lineRQ))
-    if len(lineRQ) >= 8:
-      lineR = lineRQ[-4:]
-      hotelTicker = lineR[0]
-      if hashMap.has_key(hotelTicker):
-        hashMap[hotelTicker] = hashMap[hotelTicker] + 1
-      else:
-        hashMap[hotelTicker] = 1
-      i+=1
-      if not hotelTicker in hotelTickerFail:
-        rep,new,unknow = sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,rep,new,unknow)
-    else:
-      print msg
-      errorLog.write(msg)
-  print "i : " , i, "total: " , len(totalString)
-  print "rep " , rep , " new ", new , " unknow " , unknow
-  print "hotelTickerFail " , hotelTickerFail
-  print hashMap
-  errorLog.close()
-  successLog.close()
-
-
-def main(argv):
-  serverHash = {"luke": [
+foldersValid = [ "logo" , "tiposalojamiento" ,  "extras" , "establecimientos" ]
+serverHash = {"luke": [
                   "http://luke.local",
                   "luke.local",
                   "/var/www/vhosts/jpala.luke.local/httpdocs/v6/multimedia",
@@ -124,17 +33,197 @@ def main(argv):
                 ],
             #, "local" : "localhost"
             }
+hasPrinted = False
+
+def getFilesAsString(urlFind,userFtp,passFtp,commandFind):
+  try:                                                            
+    s = pxssh.pxssh()
+    s.login(urlFind,userFtp,passFtp)
+    s.sendline(commandFind)
+    s.prompt()
+    content= s.before
+    fil = open('entry.txt','w')
+    fil.write(content)
+    fil.close()
+    s.logout()
+    return content
+  except pxssh.ExceptionPxssh, e:
+      print "pxssh failed on login."
+      print str(e)
+      global hasPrinted
+      hasPrinted = True
+
+def incrementInHashMap(hashMap,key):
+  if key in hashMap.keys():
+    hashMap[key] = hashMap[key]+1
+  else:
+    hashMap[key] = 1
+
+def sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,hotelTickerSuccess,rep,new,unknow,verbose,cVerbose):
+  try:
+    global hasPrinted
+    hotelTicker = lineR[0]
+    entity = lineR[1]
+    idEntity = int(lineR[2])
+    fileName = lineR[3]
+    params = urllib.urlencode({'hotelTicker':hotelTicker,'entity':entity,'idEntity':idEntity,'fileName':fileName})
+    conn= urllib.urlopen(url+":8080/WitBookerAPI-war/webresources/internal/withotel/insert", params) 
+    htmlGet = html.fromstring(conn.read())
+    msgBonito=etree.tostring(htmlGet,pretty_print=True)
+    successLog.write(str(lineR))
+    successLog.write(str(params))
+    successLog.write(msgBonito)
+    if verbose:
+      print lineR
+      print params
+      print msgBonito
+      hasPrinted = True
+    if "The database could not be accessed" in msgBonito or "DataBase '"+hotelTicker+"' Not found." in msgBonito:
+      if verbose:
+        print "hotelTicker "+ hotelTicker + " appended to hotelTickerFail list "
+      hotelTickerFail.append(hotelTicker)
+    elif "hotelMedia ya existe" in msgBonito:
+      rep+=1
+      incrementInHashMap(hotelTickerSuccess,hotelTicker)
+    elif "HotelMedia{" in msgBonito:
+      if cVerbose:
+        print lineR
+        print params
+        print msgBonito
+        hasPrinted = True
+      new+=1
+      incrementInHashMap(hotelTickerSuccess,hotelTicker)
+    else:
+      unknow+=1
+    conn.close()
+  except ValueError:
+    print msg
+    hasPrinted = True
+    if (wait):
+      raw_input('Error happens, enter any key to continue...')
+      hasPrinted = True
+    errorLog.write(msg+"\n")
+  return [rep,new,unknow]
+
+def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected,verbose,cVerbose):
+  print "ssh "+userFtp+"@"+urlFind
+  global hasPrinted
+  content = getFilesAsString(urlFind,userFtp,passFtp,commandFind)
+  errorLog = open('logs/error.log','w')
+  successLog = open('logs/success.log','w')
+  i = 0
+  totalString = content.splitlines(True)[1:]
+  hashMap = {}
+  hotelTickerFail = []
+  successLst = {}
+  rep=0
+  new=0
+  unknow=0
+  unsended = 0
+  cont = 0
+  sizeCont = len(totalString)/20.0
+  for line in totalString:
+    showProgress(cont,sizeCont,successLst)
+    cont +=1
+    lineRQ =map(lambda x: x.strip(),line.split("/"))
+    msg = "\n"+str(line.strip())+" len: "+str(len(lineRQ))+"\n"
+    if len(lineRQ) >= 8:
+      lineR = lineRQ[-4:]
+      hotelTicker = lineR[0]
+      entity = lineR[1]
+      if hashMap.has_key(hotelTicker):
+        hashMap[hotelTicker] = hashMap[hotelTicker] + 1
+      else:
+        hashMap[hotelTicker] = 1
+      i+=1
+      if entity in foldersValid:
+        if not hotelTicker in hotelTickerFail and (len(hotelTickerListSelected) == 0 or hotelTicker in hotelTickerListSelected):
+          rep,new,unknow = sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,successLst,rep,new,unknow,verbose,cVerbose)
+        else:
+          unsended +=1
+          errorLog.write("hotelTicker: "+str(hotelTicker)+" found in hotelTickerFail. "+str(lineR)+"\n")
+      else:
+        unsended +=1
+        errorLog.write("entity: "+str(entity)+" not found. "+str(lineR)+"\n")
+    else:
+      unsended +=1
+      hasPrinted = True
+      print msg
+      errorLog.write(msg+"\n")
+  curseShowProgress(cont,sizeCont,successLst)
+# showProgress(cont,sizeCont,successLst)
+# for hm in hashMap.keys():
+#   if not hm in hotelTickerFail and (len(hotelTickerListSelected) == 0 or hm in hotelTickerListSelected):
+#     successLst.append(hm)
+  print "cont " , cont
+  msgResumen =  "i : " +  str(i) + " total: " + str(len(totalString))+"\n"
+  msgResumen +=  "rep " + str(rep) + " new " + str(new) + " unknow " + str(unknow) +" , unsended "+ str(unsended)+"\n"
+  msgResumen +=  "hotelTickerFail " + str(hotelTickerFail) + str(2*"\n")
+  msgResumen += "hotelTickerSuccess " + str(successLst) + str(2*"\n")
+  msgResumen += "HashMap " + str(hashMap) +"\n"
+  print msgResumen
+  res = open('logs/resume.report','w')
+  res.write(msgResumen)
+  res.close()
+  errorLog.close()
+  successLog.close()
+
+
+def showProgress(cont,sizeCont,hotelTickerSuccess):
+  global hasPrinted
+  if cont > sizeCont:
+    if not hasPrinted:
+      sys.stdout.write('\r')
+    a = float(cont)/sizeCont
+    #print 'a : ', a ,'sizeCont' , sizeCont , "cont", cont , 'hasPrinted', hasPrinted
+    #sys.stdout.write("[%-20s] %d%%" % ('='*int(a), 5*a))
+    sys.stdout.write('\b'*(len(hotelTickerSuccess)+1))
+    msg ="\r[%-20s] %d%%\n" % ('='*int(a), 5*a)+" "+reduce(lambda x,ticker: x+"\r%s %d \n" % (ticker , hotelTickerSuccess[ticker]) , hotelTickerSuccess.keys(),"")
+    sys.stdout.write(msg)
+    sys.stdout.flush()
+    #for ticker in hotelTickerSuccess.keys(): sys.stdout.write("%s %d\n" % (ticker , hotelTickerSuccess[ticker]))
+    hasPrinted = False
+  #sys.stdout.write("[%-20s] %d%%" % ('='*i, 5*i))
+
+
+def curseShowProgress(cont,sizeCont,hotelTickerSuccess):
+  global hasPrinted
+  if cont > sizeCont:
+    if not hasPrinted:
+      sys.stdout.write('\r')
+    a = float(cont)/sizeCont
+    i = 1
+    msg ="\r[%-20s] %d%%\n" % ('='*int(a), 5*a)
+    stdscr.addstr(0,0,msg)
+    for ticker in hotelTickerSuccess.keys(): 
+      stdscr.addstr(i,0,"%s %d" % (ticker , hotelTickerSuccess[ticker]))
+      i+=1
+    stdsrc.refresh()
+
+
+def error():
+  print 'Arguments required. \nPlease run python meterArchivos.py -h for more information.'
+  #print 'test.py -i <inputfile> -o <outputfile>'
+  sys.exit(2)
+
+def showInfo():
+  print 'meterArchivos.py -s --server <server:luke,test,prod> [-w wait in any directory error] [-r remove old logs] [-t --hotelTicker hotelTicker] [-v --verbose show everything ] [-c --cVerbose hide ssuccess] [-m multiple hotelTicker separated with spaces]'
+  sys.exit()
+
+def main(argv):
   server = []
   wait = False
+  verbose = False
+  cVerbose = True
+  ht = []
   try:
-    opts, args = getopt.getopt(argv,"hs:rw",["server="])
+    opts, args = getopt.getopt(argv,"is:rwt:vhm",["server=","hotelTicker=","verbose=","hideSuccessVerbose"])
     #opts, args = getopt.getopt(argv,"hs:o:",["ifile=","ofile="])
   except getopt.GetoptError:
     error()
   for opt, arg in opts:
-    if opt == '-h':
-      print 'meterArchivos.py -s <server:luke,test,prod> [-w wait in any directory error] [-r remove old logs]'
-      sys.exit()
+    if opt == '-i':
+      showInfo()
     elif opt in ["-s","--server"]:
       if serverHash.has_key(arg):
         server = serverHash[arg]
@@ -148,16 +237,30 @@ def main(argv):
           os.remove(fil)
     elif opt == '-w':
       wait = True
+    elif opt in [ '-t','--hotelTicker=']:
+      ht.append(arg)
+    elif opt in ['-v' , '--verbose']:
+      verbose=True
+    elif opt in ['-h' , '--hideSuccessVerbose']:
+      cVerbose=False
+    elif opt == '-m':
+      ht = ht + arg.split()
   if len(argv) == 0 or len(server) == 0:
-    error()
+    showInfo()
   url = server[0]
   urlFind = server[1]
-  commandFind = 'find '+server[2]+' -name \'*.png\' -or -name \'*.jpg\' -or -name \'*.gif\''
+  commandFind = 'find '+server[2]+' -name \'*.png\' -or -name \'*.jpg\' -or -name \'*.gif\' | grep '+reduce(lambda x,y: x+" -e "+y, foldersValid,"")
   userFtp = server[3]
   passFtp = server[4]
-  execute(url,urlFind,commandFind,userFtp,passFtp,wait)
-
-
+  execute(url,urlFind,commandFind,userFtp,passFtp,wait,ht,verbose,cVerbose)
 
 if __name__ == "__main__":
-  main(sys.argv[1:])
+  stdscr = curses.initscr()
+  curses.noecho()
+  curses.cbreak()
+  try:
+    main(sys.argv[1:])
+  finally:
+    curses.echo()
+    curses.nocbreak()
+    curses.endwin()
