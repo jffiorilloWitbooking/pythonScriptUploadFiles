@@ -174,7 +174,7 @@ def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected
 #   if not hm in hotelTickerFail and (len(hotelTickerListSelected) == 0 or hm in hotelTickerListSelected):
 #     successLst.append(hm)
   print "\ncont " , cont
-  msgResumen =  "i : " +  str(i) + " total: " + str(len(totalString))+"\n"
+  msgResumen =  "Time: "+str(time.strftime("%d/%m/%Y %H:%M:%S"))+"\ni : " +  str(i) + " total: " + str(len(totalString))+"\n"
   msgResumen +=  "rep " + str(rep) + " new " + str(new) + " unknow " + str(unknow) +" , unsended "+ str(unsended)+"\n"
   msgResumen +=  "hotelTickerFail " + str(hotelTickerFail) + str(2*"\n")
   msgResumen += "hotelTickerSuccess " + str(successLst) + str(2*"\n")
