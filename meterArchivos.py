@@ -29,23 +29,44 @@ serverHash = {"luke": [
             }
 hasPrinted = False
 
-def getFilesAsString(urlFind,userFtp,passFtp,commandFind,path):
-  try:                                                            
+def executeRemote(url,userFtp,passFtp,commandLine):
+  try:
     s = pxssh.pxssh()
-    s.login(urlFind,userFtp,passFtp)
-    s.sendline(commandFind)
+    s.login(url,userFtp,passFtp)
+    s.sendline(commandLine)
     s.prompt()
     content= s.before
-    fil = open(path+'/entry.txt','w')
-    fil.write(content)
-    fil.close()
     s.logout()
     return content
   except pxssh.ExceptionPxssh, e:
-      print "pxssh failed on login."
-      print str(e)
-      global hasPrinted
-      hasPrinted = True
+    print "pxssh failed on login."
+    print str(e)
+    global hasPrinted
+    hasPrinted = True
+
+def getFilesAsString(urlFind,userFtp,passFtp,commandFind,path=False,store=True):
+  content = executeRemote(urlFind,userFtp,passFtp,commandFind)
+  if content and path and store:
+    fil = open(path+'/entry.txt','w')
+    fil.write(content)
+    fil.close()
+  return content
+# try:
+#   s = pxssh.pxssh()
+#   s.login(urlFind,userFtp,passFtp)
+#   s.sendline(commandFind)
+#   s.prompt()
+#   content= s.before
+#   fil = open(path+'/entry.txt','w')
+#   fil.write(content)
+#   fil.close()
+#   s.logout()
+#   return content
+# except pxssh.ExceptionPxssh, e:
+#     print "pxssh failed on login."
+#     print str(e)
+#     global hasPrinted
+#     hasPrinted = True
 
 def incrementInHashMap(hashMap,key):
   if key in hashMap.keys():
@@ -101,14 +122,16 @@ def sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,hotelTi
     errorLog.write(msg+"\n")
   return [rep,new,unknow]
 
-def createFolder(serverName):
-  path = "runLogs/runOn"+serverName+" - "+time.strftime("%d-%m-%Y")
+def createFolder(serverName,root="runLogs/"):
+  if root[-1] is not "/":
+    root+="/"
+  path = root+"runOn"+serverName+"-"+time.strftime("%d-%m-%Y")
   if os.path.exists(path):
     i = 1
-    path = "runLogs/runOn"+serverName+" - "+time.strftime("%d-%m-%Y")+" - "+str(i)
+    path = root+"runOn"+serverName+"-"+time.strftime("%d-%m-%Y")+"-"+str(i)
     while os.path.exists(path) and i < 100000:
       i+=1
-      path = "runLogs/runOn"+serverName+" - "+time.strftime("%d-%m-%Y")+" - "+str(i)
+      path = root+"runOn"+serverName+"-"+time.strftime("%d-%m-%Y")+"-"+str(i)
   if not os.path.exists(path):
     os.makedirs(path)
   print "folder " , path , " created" 
