@@ -7,27 +7,26 @@ import sys
 import getopt
 import glob,os 
 from lxml import etree, html
-import curses
 
 foldersValid = [ "logo" , "tiposalojamiento" ,  "extras" , "establecimientos" ]
 serverHash = {"luke": [
-                  "http://luke.local",
+                  "http://luke.local:8080",
                   "luke.local",
                   "/var/www/vhosts/jpala.luke.local/httpdocs/v6/multimedia",
                   "oper",
                   "wIT_oper13"
                 ] ,
             "test" : [
-                  "http://www3.witbooking.com",
+                  "http://www3.witbooking.com:8080",
                   "www3.witbooking.com",
                   "/var/www/vhosts/www3.witbooking.com/httpdocs/v6/multimedia/",
                   "root",
                   "WitDevel;"
                 ],
             "prod" : [
-                  "http://www.witbooking.com",
+                  "http://www.witbooking.com:18080",
                   "www.witbooking.com",
-                  "/var/www/vhosts/www.witbooking.com/httpdocs/v6/multimedia",
+                  "httpdocs/v6/multimedia",
                   "ftpwitbooking",
                   "freeRock!708"
                 ],
@@ -67,7 +66,7 @@ def sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,hotelTi
     idEntity = int(lineR[2])
     fileName = lineR[3]
     params = urllib.urlencode({'hotelTicker':hotelTicker,'entity':entity,'idEntity':idEntity,'fileName':fileName})
-    conn= urllib.urlopen(url+":8080/WitBookerAPI-war/webresources/internal/withotel/insert", params) 
+    conn= urllib.urlopen(url+"/WitBookerAPI-war/webresources/internal/withotel/insert", params) 
     htmlGet = html.fromstring(conn.read())
     msgBonito=etree.tostring(htmlGet,pretty_print=True)
     successLog.write(str(lineR))
@@ -123,12 +122,14 @@ def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected
   cont = 0
   sizeCont = len(totalString)/20.0
   for line in totalString:
-    showProgress(cont,sizeCont,successLst)
+    print line
+    showProgress(cont,sizeCont)
     cont +=1
     lineRQ =map(lambda x: x.strip(),line.split("/"))
     msg = "\n"+str(line.strip())+" len: "+str(len(lineRQ))+"\n"
-    if len(lineRQ) >= 8:
-      lineR = lineRQ[-4:]
+    if len(lineRQ) >= 7 and "multimedia" in lineRQ and lineRQ.index("multimedia")+1 < len(lineRQ):
+      lineR = lineRQ[lineRQ.index("multimedia")+1:]
+#     lineR = lineRQ[-4:]
       hotelTicker = lineR[0]
       entity = lineR[1]
       if hashMap.has_key(hotelTicker):
@@ -150,12 +151,11 @@ def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected
       hasPrinted = True
       print msg
       errorLog.write(msg+"\n")
-  curseShowProgress(cont,sizeCont,successLst)
-# showProgress(cont,sizeCont,successLst)
+  showProgress(cont,sizeCont)
 # for hm in hashMap.keys():
 #   if not hm in hotelTickerFail and (len(hotelTickerListSelected) == 0 or hm in hotelTickerListSelected):
 #     successLst.append(hm)
-  print "cont " , cont
+  print "\ncont " , cont
   msgResumen =  "i : " +  str(i) + " total: " + str(len(totalString))+"\n"
   msgResumen +=  "rep " + str(rep) + " new " + str(new) + " unknow " + str(unknow) +" , unsended "+ str(unsended)+"\n"
   msgResumen +=  "hotelTickerFail " + str(hotelTickerFail) + str(2*"\n")
@@ -168,46 +168,24 @@ def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected
   errorLog.close()
   successLog.close()
 
-
-def showProgress(cont,sizeCont,hotelTickerSuccess):
+def showProgress(cont,sizeCont):
   global hasPrinted
   if cont > sizeCont:
     if not hasPrinted:
       sys.stdout.write('\r')
     a = float(cont)/sizeCont
     #print 'a : ', a ,'sizeCont' , sizeCont , "cont", cont , 'hasPrinted', hasPrinted
-    #sys.stdout.write("[%-20s] %d%%" % ('='*int(a), 5*a))
-    sys.stdout.write('\b'*(len(hotelTickerSuccess)+1))
-    msg ="\r[%-20s] %d%%\n" % ('='*int(a), 5*a)+" "+reduce(lambda x,ticker: x+"\r%s %d \n" % (ticker , hotelTickerSuccess[ticker]) , hotelTickerSuccess.keys(),"")
-    sys.stdout.write(msg)
+    sys.stdout.write("[%-20s] %d%%" % ('='*int(a), 5*a))
     sys.stdout.flush()
-    #for ticker in hotelTickerSuccess.keys(): sys.stdout.write("%s %d\n" % (ticker , hotelTickerSuccess[ticker]))
     hasPrinted = False
-  #sys.stdout.write("[%-20s] %d%%" % ('='*i, 5*i))
-
-
-def curseShowProgress(cont,sizeCont,hotelTickerSuccess):
-  global hasPrinted
-  if cont > sizeCont:
-    if not hasPrinted:
-      sys.stdout.write('\r')
-    a = float(cont)/sizeCont
-    i = 1
-    msg ="\r[%-20s] %d%%\n" % ('='*int(a), 5*a)
-    stdscr.addstr(0,0,msg)
-    for ticker in hotelTickerSuccess.keys(): 
-      stdscr.addstr(i,0,"%s %d" % (ticker , hotelTickerSuccess[ticker]))
-      i+=1
-    stdsrc.refresh()
-
 
 def error():
-  print 'Arguments required. \nPlease run python meterArchivos.py -h for more information.'
-  #print 'test.py -i <inputfile> -o <outputfile>'
-  sys.exit(2)
+  print 'Error, arguments required.'
+  showInfo()
+
 
 def showInfo():
-  print 'meterArchivos.py -s --server <server:luke,test,prod> [-w wait in any directory error] [-r remove old logs] [-t --hotelTicker hotelTicker] [-v --verbose show everything ] [-c --cVerbose hide ssuccess] [-m multiple hotelTicker separated with spaces]'
+  print './meterArchivos.py -s --server <server:luke,test,prod> [-w wait in any directory error] [-r remove old logs] [-t --hotelTicker hotelTicker] [-v --verbose show everything ] [-c --cVerbose hide ssuccess] [-m multiple hotelTicker separated with spaces] [-f --find grep the lines with the word given]'
   sys.exit()
 
 def main(argv):
@@ -255,12 +233,4 @@ def main(argv):
   execute(url,urlFind,commandFind,userFtp,passFtp,wait,ht,verbose,cVerbose)
 
 if __name__ == "__main__":
-  stdscr = curses.initscr()
-  curses.noecho()
-  curses.cbreak()
-  try:
-    main(sys.argv[1:])
-  finally:
-    curses.echo()
-    curses.nocbreak()
-    curses.endwin()
+  main(sys.argv[1:])
