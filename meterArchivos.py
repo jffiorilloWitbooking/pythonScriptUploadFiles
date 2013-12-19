@@ -1,11 +1,6 @@
 #!/usr/bin/python
 
-import pxssh
-import getpass
-import httplib,urllib,urllib2
-import sys
-import getopt
-import glob,os 
+import pxssh , getpass , httplib,urllib,urllib2 , sys , getopt ,glob,os ,time
 from lxml import etree, html
 
 foldersValid = [ "logo" , "tiposalojamiento" ,  "extras" , "establecimientos" ]
@@ -34,14 +29,14 @@ serverHash = {"luke": [
             }
 hasPrinted = False
 
-def getFilesAsString(urlFind,userFtp,passFtp,commandFind):
+def getFilesAsString(urlFind,userFtp,passFtp,commandFind,path):
   try:                                                            
     s = pxssh.pxssh()
     s.login(urlFind,userFtp,passFtp)
     s.sendline(commandFind)
     s.prompt()
     content= s.before
-    fil = open('entry.txt','w')
+    fil = open(path+'/entry.txt','w')
     fil.write(content)
     fil.close()
     s.logout()
@@ -80,6 +75,7 @@ def sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,hotelTi
     if "The database could not be accessed" in msgBonito or "DataBase '"+hotelTicker+"' Not found." in msgBonito:
       if verbose:
         print "hotelTicker "+ hotelTicker + " appended to hotelTickerFail list "
+        hasPrinted = True
       hotelTickerFail.append(hotelTicker)
     elif "hotelMedia ya existe" in msgBonito:
       rep+=1
@@ -96,20 +92,35 @@ def sendFile(url,line,lineR,successLog,errorLog,msg,wait,hotelTickerFail,hotelTi
       unknow+=1
     conn.close()
   except ValueError:
-    print msg
-    hasPrinted = True
-    if (wait):
+    if verbose:
+      print "sendFile, valueError, that suppose to be an int " ,lineR[2] ,  msg
+      hasPrinted = True
+    if wait:
       raw_input('Error happens, enter any key to continue...')
       hasPrinted = True
     errorLog.write(msg+"\n")
   return [rep,new,unknow]
 
-def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected,verbose,cVerbose):
+def createFolder(serverName):
+  path = "runLogs/runOn"+serverName+" - "+time.strftime("%d-%m-%Y")
+  if os.path.exists(path):
+    i = 1
+    path = "runLogs/runOn"+serverName+" - "+time.strftime("%d-%m-%Y")+" - "+str(i)
+    while os.path.exists(path) and i < 100000:
+      i+=1
+      path = "runLogs/runOn"+serverName+" - "+time.strftime("%d-%m-%Y")+" - "+str(i)
+  if not os.path.exists(path):
+    os.makedirs(path)
+  print "folder " , path , " created" 
+  return path
+
+def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected,verbose,cVerbose,start_time,serverName):
   print "ssh "+userFtp+"@"+urlFind
   global hasPrinted
-  content = getFilesAsString(urlFind,userFtp,passFtp,commandFind)
-  errorLog = open('logs/error.log','w')
-  successLog = open('logs/success.log','w')
+  path = createFolder(serverName)
+  content = getFilesAsString(urlFind,userFtp,passFtp,commandFind,path)
+  errorLog = open(path+'/error.log','w')
+  successLog = open(path+'/success.log','w')
   i = 0
   totalString = content.splitlines(True)[1:]
   hashMap = {}
@@ -122,11 +133,16 @@ def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected
   cont = 0
   sizeCont = len(totalString)/20.0
   for line in totalString:
-    print line
-    showProgress(cont,sizeCont)
+#   print line
+    showProgress(cont,sizeCont,start_time)
     cont +=1
     lineRQ =map(lambda x: x.strip(),line.split("/"))
     msg = "\n"+str(line.strip())+" len: "+str(len(lineRQ))+"\n"
+#   if verbose:
+#     if "multimedia" in lineRQ:
+#       print len(lineRQ) >= 7 , "multimedia" in lineRQ , lineRQ.index("multimedia")+1 < len(lineRQ), "indexMultimedia", lineRQ.index("multimedia") , "lineR: " , lineRQ[lineRQ.index("multimedia")+1:]
+#     else:
+#       print len(lineRQ) >= 7 , lineRQ , "multimedia isn't in list"
     if len(lineRQ) >= 7 and "multimedia" in lineRQ and lineRQ.index("multimedia")+1 < len(lineRQ):
       lineR = lineRQ[lineRQ.index("multimedia")+1:]
 #     lineR = lineRQ[-4:]
@@ -150,8 +166,10 @@ def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected
       unsended +=1
       hasPrinted = True
       print msg
+      if (wait):
+        raw_input('Error happens, enter any key to continue...')
       errorLog.write(msg+"\n")
-  showProgress(cont,sizeCont)
+  showProgress(cont,sizeCont,start_time)
 # for hm in hashMap.keys():
 #   if not hm in hotelTickerFail and (len(hotelTickerListSelected) == 0 or hm in hotelTickerListSelected):
 #     successLst.append(hm)
@@ -161,23 +179,27 @@ def execute(url,urlFind,commandFind,userFtp,passFtp,wait,hotelTickerListSelected
   msgResumen +=  "hotelTickerFail " + str(hotelTickerFail) + str(2*"\n")
   msgResumen += "hotelTickerSuccess " + str(successLst) + str(2*"\n")
   msgResumen += "HashMap " + str(hashMap) +"\n"
+  timeExecute = round(time.time()-start_time,2)
+  msgResumen += "Time running: "+str(int(timeExecute/60))+":"+str(timeExecute%60)+" seconds\n"
   print msgResumen
-  res = open('logs/resume.report','w')
+  print "Save on" , path
+  res = open(path+'/resume.report','w')
   res.write(msgResumen)
   res.close()
   errorLog.close()
   successLog.close()
 
-def showProgress(cont,sizeCont):
+def showProgress(cont,sizeCont,start_time):
   global hasPrinted
-  if cont > sizeCont:
-    if not hasPrinted:
-      sys.stdout.write('\r')
-    a = float(cont)/sizeCont
-    #print 'a : ', a ,'sizeCont' , sizeCont , "cont", cont , 'hasPrinted', hasPrinted
-    sys.stdout.write("[%-20s] %d%%" % ('='*int(a), 5*a))
-    sys.stdout.flush()
-    hasPrinted = False
+# if cont > sizeCont:
+  if not hasPrinted:
+    sys.stdout.write('\r')
+  a = float(cont)/sizeCont
+  timeExecute = round(time.time()-start_time,2)
+  #print 'a : ', a ,'sizeCont' , sizeCont , "cont", cont , 'hasPrinted', hasPrinted
+  sys.stdout.write("time min: %d:%.2f sec. [%-20s] %d%%" % (int(timeExecute/60),timeExecute%60,'='*int(a), 5*a))
+  sys.stdout.flush()
+  hasPrinted = False
 
 def error():
   print 'Error, arguments required.'
@@ -185,11 +207,12 @@ def error():
 
 
 def showInfo():
-  print './meterArchivos.py -s --server <server:luke,test,prod> [-w wait in any directory error] [-r remove old logs] [-t --hotelTicker hotelTicker] [-v --verbose show everything ] [-c --cVerbose hide ssuccess] [-m multiple hotelTicker separated with spaces] [-f --find grep the lines with the word given]'
+  print './meterArchivos.py -s --server <server:luke,test,prod> [-w wait in any directory error] [-r remove old logs] [-t --hotelTicker hotelTicker] [-v --verbose show everything ] [-h --hideSuccessVerbose hide ssuccess] [-m multiple hotelTicker separated with spaces] [-f --find grep the lines with the word given]'
   sys.exit()
 
-def main(argv):
+def main(argv,start_time):
   server = []
+  serverName = ""
   wait = False
   verbose = False
   cVerbose = True
@@ -205,6 +228,7 @@ def main(argv):
     elif opt in ["-s","--server"]:
       if serverHash.has_key(arg):
         server = serverHash[arg]
+        serverName = arg
       else:
         print "server: ",arg," not found."
         print "servers accepted: " , reduce(lambda x,y: y+" , "+x,serverHash.keys(),"")[:-2]
@@ -230,7 +254,8 @@ def main(argv):
   commandFind = 'find '+server[2]+' -name \'*.png\' -or -name \'*.jpg\' -or -name \'*.gif\' | grep '+reduce(lambda x,y: x+" -e "+y, foldersValid,"")
   userFtp = server[3]
   passFtp = server[4]
-  execute(url,urlFind,commandFind,userFtp,passFtp,wait,ht,verbose,cVerbose)
+  execute(url,urlFind,commandFind,userFtp,passFtp,wait,ht,verbose,cVerbose,start_time,serverName)
 
 if __name__ == "__main__":
-  main(sys.argv[1:])
+  start_time = time.time()
+  main(sys.argv[1:],start_time)
